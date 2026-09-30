@@ -292,7 +292,21 @@ function generateDerivedHistory(cityId, listedPrice, lastMonth) {
 }
 
 app.post('/api/import/community-detail', (req, res) => {
-  const { city, name, district, built_year, buildings, households, plot_ratio, greening_rate, property_fee, listed_price, ownership_type, property_years, text } = req.body || {};
+  let { city, name, district, built_year, buildings, households, plot_ratio, greening_rate, property_fee, listed_price, ownership_type, property_years, text, pageText } = req.body || {};
+  // pasted anjuke page text: auto-extract fields (user copies the rendered page)
+  if (pageText && String(pageText).includes('权属类别')) {
+    const { parseDetailText } = require('./parsers');
+    const parsed = parseDetailText(pageText);
+    if (parsed.built_year_raw) built_year = built_year || parsed.built_year_raw;
+    if (parsed.ownership_type) ownership_type = ownership_type || parsed.ownership_type;
+    if (parsed.property_years) property_years = property_years || parsed.property_years;
+    if (parsed.households) households = households || parsed.households;
+    if (parsed.greening_rate) greening_rate = greening_rate || parsed.greening_rate;
+    if (parsed.plot_ratio) plot_ratio = plot_ratio || parsed.plot_ratio;
+    if (parsed.property_fee) property_fee = property_fee || parsed.property_fee;
+    if (parsed.listed_price) listed_price = listed_price || parsed.listed_price;
+    if (parsed.listed_month) req.body.listed_month = parsed.listed_month;
+  }
   const c = cityByCode(city);
   if (!c) return res.status(400).json({ ok: false, error: '无效城市' });
   if (!name || !String(name).trim()) return res.status(400).json({ ok: false, error: '缺少小区名称' });
@@ -309,11 +323,11 @@ app.post('/api/import/community-detail', (req, res) => {
       district = COALESCE(?, district), built_year = ?, buildings = ?, households = ?,
       plot_ratio = ?, greening_rate = ?, property_fee = ?, listed_price = ?,
       ownership_type = COALESCE(?, ownership_type), property_years = COALESCE(?, property_years),
-      listed_month = (SELECT MAX(month) FROM community_price WHERE cid = ?),
+      listed_month = COALESCE(?, (SELECT MAX(month) FROM community_price WHERE cid = ?)),
       note = '用户导入的真实数据' WHERE id = ?`)
       .run(
         district ? String(district).trim() : null,
-        Number.isFinite(+built_year) && +built_year > 1900 ? +built_year : null,
+        built_year != null && String(built_year).trim() !== '' ? String(built_year).trim() : null,
         Number.isFinite(+buildings) && +buildings > 0 ? +buildings : null,
         Number.isFinite(+households) && +households > 0 ? +households : null,
         Number.isFinite(+plot_ratio) && +plot_ratio > 0 ? +plot_ratio : null,
@@ -322,6 +336,7 @@ app.post('/api/import/community-detail', (req, res) => {
         Number.isFinite(+listed_price) && +listed_price > 0 ? +listed_price : null,
         ownership_type ? String(ownership_type).trim() : null,
         property_years ? String(property_years).trim() : null,
+        (req.body || {}).listed_month || null,
         id, id
       );
     if (rows.length >= 2) {

@@ -112,6 +112,10 @@
         <div class="form-col"><label>物业费</label><input type="text" v-model="dField.property_fee" placeholder="2.8元/㎡/月" style="width:110px" /></div>
         <div class="form-col"><label>当前挂牌均价</label><input type="text" v-model="dField.listed_price" placeholder="51000" style="width:90px" /></div>
       </div>
+      <div class="form-col" style="margin-bottom: 8px" v-if="kind === 'community-detail'">
+        <label>粘贴安居客小区页面文字（推荐：打开该小区的安居客页面 → 全选复制 → 粘贴到这里，系统自动识别竣工时间/权属类别/产权年限/总户数/挂牌均价等字段）</label>
+        <textarea v-model="pageText" style="min-height: 100px" placeholder="从安居客小区页面复制的文字粘贴到此处…"></textarea>
+      </div>
       <div class="form-col" style="margin-bottom: 8px">
         <label>
           {{ kind === 'community-detail' ? '历史均价（可选，每行一条：年月,均价）' : '数据（每行一条：年月,均价，如 2024-05,52000）' }}
@@ -154,6 +158,7 @@ export default {
     diaging: false,
     diag: null,
     dField: { built_year: '', buildings: '', households: '', plot_ratio: '', greening_rate: '', property_fee: '', listed_price: '' },
+    pageText: '',
   }),
   async created() {
     this.cities = await api('/api/cities').catch(() => []);
@@ -216,7 +221,7 @@ export default {
       this.msg = '';
       try {
         if (this.kind === 'community-detail') {
-          const body = { city: this.cityCode, name: this.commName, district: this.district, ...this.dField, text: this.text };
+          const body = { city: this.cityCode, name: this.commName, district: this.district, ...this.dField, pageText: this.pageText, text: this.text };
           const d = await post('/api/import/community-detail', body);
           this.ok = true;
           this.msg = `导入成功：小区「${this.commName}」详情已保存${d.historyRows >= 2 ? `，历史均价 ${d.historyRows} 条` : '（未提供历史均价）'}`;

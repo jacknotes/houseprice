@@ -114,4 +114,40 @@ function parseCommunityView(html) {
   return out;
 }
 
-module.exports = { parseNbsCsv, parseAnjukeTable, parseCsvLine, parseCommunityView };
+// Parse pasted anjuke community page TEXT (user copies the rendered page) -> fields
+// Note: rendered page text duplicates each value (hover layer + visible layer), e.g.
+// "权属类别 经济适用房 经济适用房" — values are deduped after extraction.
+function dedupeValue(v) {
+  if (v == null) return v;
+  const m = String(v).trim().match(/^(.+?)\s+\1$/);
+  return m ? m[1] : String(v).trim();
+}
+function parseDetailText(text) {
+  const t = String(text || '').replace(/\s+/g, ' ');
+  const out = {};
+  const grab = (re, group = 1) => {
+    const m = t.match(re);
+    if (!m) return null;
+    return dedupeValue(m[group]);
+  };
+  out.built_year_raw = grab(/竣工时间\s*(.{1,120}?)\s*(?=产权年限|权属类别|总户数|建筑类型|所属商圈|绿化率|容积率|物业费|物业公司|开发商|小区地址|在售房源|统一供暖|供水供电|停车位)/);
+  out.ownership_type = grab(/权属类别\s*([^\s]{2,12}?)(?=\s*(?:产权年限|竣工时间|总户数|楼栋|绿化率|容积率|物业费|物业公司|开发商|建筑类型|$))/);
+  out.property_years = grab(/产权年限\s*(\d{1,2}年)/);
+  const hh = grab(/总户数\s*(\d+)\s*户?/);
+  if (hh) out.households = +hh;
+  const gr = grab(/绿化率\s*([\d.]+)/);
+  if (gr) out.greening_rate = +gr;
+  const pr = grab(/容积率\s*([\d.]+)/);
+  if (pr) out.plot_ratio = +pr;
+  out.property_fee = grab(/物业费\s*([\d.]+\s*元\/[^\s]{1,10})/);
+  const pm = t.match(/(\d{4,6})\s*元\/㎡\s*(\d{1,2})月挂牌均价/);
+  if (pm) {
+    out.listed_price = +pm[1];
+    out.listed_month = `${new Date().getFullYear()}-${String(pm[2]).padStart(2, '0')}`;
+  }
+  const nm = grab(/小区名称\s*([^\s]{3,30})/);
+  if (nm) out.page_name = nm;
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v != null && v !== ''));
+}
+
+module.exports = { parseNbsCsv, parseAnjukeTable, parseCsvLine, parseCommunityView, parseDetailText };
