@@ -165,6 +165,7 @@ app.get('/api/community/:id', (req, res) => {
     id: row.id, name: row.name, district: row.district, source: row.source, note: row.note,
     cityName: row.cityName, cityCode: row.cityCode,
     built_year: row.built_year, buildings: row.buildings, households: row.households,
+    ownership_type: row.ownership_type, property_years: row.property_years,
     plot_ratio: row.plot_ratio, greening_rate: row.greening_rate, property_fee: row.property_fee,
     listed_price: row.listed_price, listed_month: row.listed_month, anjuke_url: row.anjuke_url,
     months: prices.map((r) => r.month), prices: series,
@@ -291,7 +292,7 @@ function generateDerivedHistory(cityId, listedPrice, lastMonth) {
 }
 
 app.post('/api/import/community-detail', (req, res) => {
-  const { city, name, district, built_year, buildings, households, plot_ratio, greening_rate, property_fee, listed_price, text } = req.body || {};
+  const { city, name, district, built_year, buildings, households, plot_ratio, greening_rate, property_fee, listed_price, ownership_type, property_years, text } = req.body || {};
   const c = cityByCode(city);
   if (!c) return res.status(400).json({ ok: false, error: '无效城市' });
   if (!name || !String(name).trim()) return res.status(400).json({ ok: false, error: '缺少小区名称' });
@@ -307,6 +308,7 @@ app.post('/api/import/community-detail', (req, res) => {
     db.prepare(`UPDATE communities SET
       district = COALESCE(?, district), built_year = ?, buildings = ?, households = ?,
       plot_ratio = ?, greening_rate = ?, property_fee = ?, listed_price = ?,
+      ownership_type = COALESCE(?, ownership_type), property_years = COALESCE(?, property_years),
       listed_month = (SELECT MAX(month) FROM community_price WHERE cid = ?),
       note = '用户导入的真实数据' WHERE id = ?`)
       .run(
@@ -318,6 +320,8 @@ app.post('/api/import/community-detail', (req, res) => {
         Number.isFinite(+greening_rate) && +greening_rate > 0 ? +greening_rate : null,
         property_fee ? String(property_fee).trim() : null,
         Number.isFinite(+listed_price) && +listed_price > 0 ? +listed_price : null,
+        ownership_type ? String(ownership_type).trim() : null,
+        property_years ? String(property_years).trim() : null,
         id, id
       );
     if (rows.length >= 2) {

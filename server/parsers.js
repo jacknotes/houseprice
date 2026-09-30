@@ -82,4 +82,36 @@ function parseAnjukeTable(html) {
   return [...seen.values()].sort((a, b) => a.ym.localeCompare(b.ym));
 }
 
-module.exports = { parseNbsCsv, parseAnjukeTable, parseCsvLine };
+// Parse anjuke community/view detail page -> structured fields
+function parseCommunityView(html) {
+  const s = String(html);
+  const out = {};
+  const label = (name) => {
+    const re = new RegExp(`>\\s*${name}\\s*</div>\\s*<div class="hover"[^>]*>\\s*<div class="value[^"]*"[^>]*>\\s*([\\s\\S]{0,160}?)\\s*</div>`, 'i');
+    const m = s.match(re);
+    return m ? m[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : null;
+  };
+  out.built_year_raw = label('竣工时间');
+  out.ownership_type = label('权属类别');
+  out.property_years = label('产权年限');
+  const hh = label('总户数');
+  if (hh) {
+    const n = parseFloat(hh.replace(/[^\d.]/g, ''));
+    out.households = Number.isFinite(n) ? n : null;
+    out.households_raw = hh;
+  }
+  out.property_fee = label('物业费');
+  out.greening_rate = label('绿化率');
+  out.plot_ratio = label('容积率');
+  const pm = s.match(/<span class="average"[^>]*>(\d{4,6})<\/span>\s*<span class="unit"[^>]*>元\/㎡<\/span>[\s\S]{0,120}?(\d{1,2})月挂牌均价/);
+  if (pm) {
+    out.listed_price = +pm[1];
+    const now = new Date();
+    out.listed_month = `${now.getFullYear()}-${String(pm[2]).padStart(2, '0')}`;
+  }
+  const nm = s.match(/<h1[^>]*>([^<]{2,40})<\/h1>/);
+  out.page_name = nm ? nm[1].trim() : null;
+  return out;
+}
+
+module.exports = { parseNbsCsv, parseAnjukeTable, parseCsvLine, parseCommunityView };

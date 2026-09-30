@@ -90,9 +90,11 @@
           <div class="stat-cell"><div class="l">近12月</div><div class="v" :class="detail.stats.mom12 >= 0 ? 'up' : 'down'">{{ detail.stats.mom12 > 0 ? '+' : '' }}{{ detail.stats.mom12 }}%</div></div>
         </div>
         <div class="stat-row" v-if="hasDetailFields">
-          <div class="stat-cell" v-if="detail.built_year"><div class="l">建成年份</div><div class="v">{{ detail.built_year }}年 <span class="badge real">真实</span></div></div>
+          <div class="stat-cell" v-if="detail.built_year"><div class="l">竣工时间</div><div class="v" style="font-size:13px">{{ detail.built_year }} <span class="badge real">真实</span></div></div>
+          <div class="stat-cell" v-if="detail.ownership_type"><div class="l">权属类别</div><div class="v" style="font-size:13px">{{ detail.ownership_type }} <span class="badge real">真实</span></div></div>
+          <div class="stat-cell" v-if="detail.property_years"><div class="l">产权年限</div><div class="v">{{ detail.property_years }} <span class="badge real">真实</span></div></div>
           <div class="stat-cell" v-if="detail.buildings"><div class="l">楼栋数</div><div class="v">{{ detail.buildings }} 栋</div></div>
-          <div class="stat-cell" v-if="detail.households"><div class="l">总户数</div><div class="v">{{ detail.households }} 户</div></div>
+          <div class="stat-cell" v-if="detail.households"><div class="l">总户数</div><div class="v">{{ detail.households }} 户 <span class="badge real">真实</span></div></div>
           <div class="stat-cell" v-if="detail.plot_ratio"><div class="l">容积率</div><div class="v">{{ detail.plot_ratio }}</div></div>
           <div class="stat-cell" v-if="detail.greening_rate"><div class="l">绿化率</div><div class="v">{{ detail.greening_rate }}%</div></div>
           <div class="stat-cell" v-if="detail.property_fee"><div class="l">物业费</div><div class="v" style="font-size:13px">{{ detail.property_fee }}</div></div>

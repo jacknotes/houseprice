@@ -60,7 +60,9 @@ CREATE TABLE communities (
   property_fee TEXT,
   listed_price REAL,
   listed_month TEXT,
-  anjuke_url TEXT
+  anjuke_url TEXT,
+  ownership_type TEXT,
+  property_years TEXT
 );
 CREATE TABLE community_price (
   cid INTEGER NOT NULL,
