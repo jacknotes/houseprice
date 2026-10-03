@@ -14,6 +14,13 @@ const ROOT = path.join(__dirname, '..');
 const DB_PATH = path.join(ROOT, 'data', 'app.db');
 const db = new DatabaseSync(DB_PATH);
 const app = express();
+// subpath deployment: nginx proxies /houseprice/... with the full path; strip the prefix
+// so the same build serves both at the root (direct :PORT) and under /houseprice/ behind a reverse proxy
+app.use((req, res, next) => {
+  if (req.url === '/houseprice') { res.redirect(301, '/houseprice/'); return; }
+  if (req.url.startsWith('/houseprice/')) req.url = req.url.slice('/houseprice'.length);
+  next();
+});
 app.use(express.json({ limit: '2mb' }));
 
 /* ---------- simple admin auth (data management is behind login) ---------- */

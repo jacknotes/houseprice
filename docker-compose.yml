@@ -3,11 +3,11 @@ services:
     build: .
     container_name: houseprice
     ports:
-      - "3000:3000"
+      - "8082:8082"
     volumes:
       - houseprice-data:/app/data
     environment:
-      - PORT=3000
+      - PORT=8082
       # 启动时自动增量刷新最新数据（70城指数 etag 条件请求 + 安居客均价尽力抓取）
       - REFRESH_ON_START=1
     restart: unless-stopped
