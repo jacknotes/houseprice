@@ -43,11 +43,11 @@ async function refreshNbs(db, log) {
       log('NBS: 上游无更新 (304 Not Modified)');
       return { source: url, status: 'not-modified', detail: '上游无新数据 (304)' };
     }
-    if (r.status !== 200 || !r.buf || !r.buf.length) {
+    if (r.status !== 200 || !r.body || !r.body.length) {
       log(`NBS: 镜像失败 ${url} -> ${r.status || r.err}`);
       continue;
     }
-    const csv = r.buf.toString('utf8');
+    const csv = r.body.toString('utf8');
     if (!csv.includes('CommodityHouseIDX')) {
       log('NBS: 响应不是有效的CSV，跳过');
       continue;
@@ -109,7 +109,7 @@ async function refreshAnjuke(db, log) {
     const city = db.prepare('SELECT id FROM cities WHERE code = ?').get(code);
     if (!city) continue;
     const upsert = db.prepare('INSERT OR REPLACE INTO city_level VALUES (?,?,?,?,?)');
-    const prev = db.prepare('SELECT price FROM city_level WHERE city_id = ? AND month < ? ORDER BY month DESC LIMIT 1').get(city.id, rows[0].ym);
+    let prev = db.prepare('SELECT price FROM city_level WHERE city_id = ? AND month < ? ORDER BY month DESC LIMIT 1').get(city.id, rows[0].ym);
     db.exec('BEGIN');
     try {
       for (const row of rows) {
