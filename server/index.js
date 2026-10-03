@@ -438,6 +438,111 @@ app.get('/api/diag/network', async (req, res) => {
   });
 });
 
+/* ---------- bulk import of crawled anjuke community details ---------- */
+app.options('/api/import/anjuke-bulk', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(204).end();
+});
+app.post('/api/import/anjuke-bulk', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const shanghai = db.prepare("SELECT id FROM cities WHERE code = 'shanghai'").get();
+  const items = (req.body && req.body.items) || [];
+  const ALLOWED_DISTRICTS = new Set(['泗泾', '洞泾']);
+  const strip = (name) => String(name || '').replace(/^(塘和家园|新凯家园|新凯城)/, '');
+  let updated = 0, inserted = 0, skipped = 0;
+  const insertedNames = [];
+  const allCommunities = db.prepare('SELECT id, name FROM communities WHERE city_id = ?');
+  db.exec('BEGIN');
+  try {
+    for (const it of items) {
+      if (!it.name || !ALLOWED_DISTRICTS.has(it.商圈)) { skipped++; continue; }
+      if (it.物业类型 && !/住宅/.test(it.物业类型)) { skipped++; continue; }
+      if (!it.挂牌均价) { skipped++; continue; }
+      const suffix = strip(it.name);
+      const all = allCommunities.all(shanghai.id);
+      const match = all.find((c) => strip(c.name) === suffix);
+      const currentMonth = it.月份 ? `${new Date().getFullYear()}-${String(it.月份).padStart(2, '0')}` : null;
+      const built = it.竣工时间 || null;
+      const fields = {
+        ownership_type: it.权属类别 || null,
+        property_years: it.产权年限 || null,
+        households: it.总户数 ? parseInt(it.总户数, 10) || null : null,
+        property_fee: it.物业费 || null,
+        greening_rate: it.绿化率 ? parseFloat(it.绿化率) || null : null,
+        plot_ratio: it.容积率 ? parseFloat(it.容积率) || null : null,
+        listed_price: it.挂牌均价,
+        listed_month: currentMonth,
+        anjuke_url: `https://shanghai.anjuke.com/community/view/${it.id}`,
+        district: it.商圈,
+        source: 'anjuke-real',
+        note: '详情与挂牌均价来自安居客（真实）；历史走势为官方指数形态推算',
+      };
+      let cid;
+      if (match) {
+        cid = match.id;
+        db.prepare(`UPDATE communities SET
+          ownership_type = COALESCE(?, ownership_type), property_years = COALESCE(?, property_years),
+          households = COALESCE(?, households), property_fee = COALESCE(?, property_fee),
+          greening_rate = COALESCE(?, greening_rate), plot_ratio = COALESCE(?, plot_ratio),
+          listed_price = ?, listed_month = COALESCE(?, listed_month), anjuke_url = ?,
+          district = ?, source = ?, note = ?
+          WHERE id = ?`).run(
+          fields.ownership_type, fields.property_years, fields.households, fields.property_fee,
+          fields.greening_rate, fields.plot_ratio, fields.listed_price, fields.listed_month,
+          fields.anjuke_url, fields.district, fields.source, fields.note, cid
+        );
+        updated++;
+      } else {
+        cid = Number(db.prepare('INSERT INTO communities (name, city_id, district, source, note) VALUES (?,?,?,?,?)')
+          .run(it.name, shanghai.id, fields.district, fields.source, fields.note).lastInsertRowid);
+        db.prepare(`UPDATE communities SET
+          ownership_type = ?, property_years = ?, households = ?, property_fee = ?,
+          greening_rate = ?, plot_ratio = ?, listed_price = ?, listed_month = ?, anjuke_url = ?
+          WHERE id = ?`).run(
+          fields.ownership_type, fields.property_years, fields.households, fields.property_fee,
+          fields.greening_rate, fields.plot_ratio, fields.listed_price, fields.listed_month, fields.anjuke_url, cid
+        );
+        inserted++;
+        insertedNames.push(`${it.商圈}·${it.name}`);
+      }
+      // re-anchor simulated history so the latest point equals the real listed price
+      const prices = db.prepare('SELECT month, price FROM community_price WHERE cid = ? ORDER BY month').all(cid);
+      if (prices.length > 12) {
+        const last = prices[prices.length - 1].price;
+        const k = fields.listed_price / last;
+        if (Math.abs(k - 1) > 0.001) {
+          const upd = db.prepare('UPDATE community_price SET price = ROUND(price * ?, 0) WHERE cid = ? AND month = ?');
+          for (const p of prices) upd.run(k, cid, p.month);
+        }
+      } else {
+        // newly inserted: build derived history from the Shanghai second-hand index
+        try {
+          const nbs = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'processed', 'city_index.json'), 'utf8'));
+          const s = nbs['上海'];
+          const firstIdx = s.secondIdx.find((v) => v != null);
+          let h = 0;
+          for (const ch of it.name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+          const phase = (h % 628) / 100;
+          const wobble = (m, i) => 1 + 0.006 * Math.sin((+m.slice(5, 7) / 12) * Math.PI * 2 + phase) + 0.004 * Math.sin(i * 0.35 + phase * 2) + ((((h ^ (i * 2654435761)) >>> 0) % 1000) / 100000 - 0.005);
+          const base = fields.listed_price / (s.secondIdx[s.secondIdx.length - 1] / firstIdx);
+          const ins = db.prepare('INSERT OR REPLACE INTO community_price VALUES (?,?,?)');
+          for (let i = 0; i < s.months.length; i++) {
+            if (s.secondIdx[i] == null) continue;
+            ins.run(cid, s.months[i], Math.round(base * (s.secondIdx[i] / firstIdx) * wobble(s.months[i], i) / 10) * 10);
+          }
+        } catch (e2) { /* history build optional */ }
+      }
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    return res.status(500).json({ ok: false, error: String(e) });
+  }
+  ok(res, { updated, inserted, skipped, insertedNames: insertedNames.slice(0, 60) });
+});
+
 /* ---------- static frontend ---------- */
 const DIST = path.join(ROOT, 'dist');
 app.use(express.static(DIST));
