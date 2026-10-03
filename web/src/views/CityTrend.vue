@@ -14,7 +14,7 @@
           v-for="c in visibleCities" :key="c.code" class="chip"
           :class="{ on: selected.includes(c.code) }" @click="toggle(c.code)"
         >
-          <span v-if="c.featured" class="star">★</span>{{ c.name }}<small v-if="c.featured" style="opacity:.7"> · {{ c.tier === '一线' ? '一线' : '咸宁' }}</small>
+          <span v-if="c.featured" class="star">★</span>{{ c.name }}<small v-if="c.featured && c.tier === '一线'" style="opacity:.7"> · 一线</small><small v-else-if="c.featured && c.code === 'xianning'" style="opacity:.7"> · 咸宁</small>
         </span>
       </div>
     </div>

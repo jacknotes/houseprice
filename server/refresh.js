@@ -140,7 +140,14 @@ async function refreshAll(db, log = console.log) {
     log('NBS 刷新异常: ' + e.message);
   }
   try {
-    result.anjuke = await refreshAnjuke(db, log);
+    // ANJUKE_REFRESH=0 时跳过安居客刷新：机房 IP 每次都会被人机校验拦截，
+    // 反复请求只会白白触发对方风控；安居客数据改由本机抓取任务负责
+    if (process.env.ANJUKE_REFRESH === '0') {
+      result.anjuke = { status: 'skipped', detail: 'ANJUKE_REFRESH=0' };
+      log('安居客刷新: 已按 ANJUKE_REFRESH=0 跳过');
+    } else {
+      result.anjuke = await refreshAnjuke(db, log);
+    }
   } catch (e) {
     result.anjuke = { status: 'failed', detail: String(e) };
     log('安居客刷新异常: ' + e.message);

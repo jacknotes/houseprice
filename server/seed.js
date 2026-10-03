@@ -84,7 +84,7 @@ const cityId = {};
 db.exec('BEGIN');
 for (const [name, [code, province, tier]] of Object.entries(M)) {
   const in70 = tier !== '三线及以下' ? 1 : 0;
-  const featured = ['beijing', 'shanghai', 'guangzhou', 'shenzhen', 'xianning'].includes(code) ? 1 : 0;
+  const featured = ['beijing', 'shanghai', 'guangzhou', 'shenzhen', 'xianning', 'wuhan'].includes(code) ? 1 : 0;
   const r = insCity.run(code, name, province, tier, in70, featured);
   cityId[name] = Number(r.lastInsertRowid);
 }
