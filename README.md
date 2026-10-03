@@ -19,6 +19,8 @@ npm start          # 启动服务，默认 http://localhost:3000
 
 打开浏览器访问 **http://localhost:3000** 即可。
 
+**数据管理（导入/刷新/抓取）在登录后可用**：右上角"登录" → 默认密码 `admin123`（可用环境变量 `ADMIN_PASSWORD` 修改）。默认导航仅展示总览/城市/小区三个页面。
+
 > 开发模式（前端热更新）：先 `npm start` 启动后端，再开一个终端跑 `npm run dev:web`，访问 http://localhost:5173。
 
 ## Docker 部署（云端）

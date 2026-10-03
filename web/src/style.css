@@ -160,5 +160,21 @@ table.src th { background: #f8fafc; font-weight: 600; }
 textarea { width: 100%; min-height: 160px; font-family: Consolas, Monaco, monospace; font-size: 12.5px; line-height: 1.6; }
 
 .footer { text-align: center; color: var(--muted); font-size: 12px; padding: 18px; }
+.auth-area { margin-left: auto; }
+.auth-link { color: rgba(255,255,255,.85); text-decoration: none; font-size: 13.5px; }
+.auth-link:hover { color: #fff; }
+.login-mask {
+  position: fixed; inset: 0; background: rgba(15, 23, 42, .45);
+  display: flex; align-items: center; justify-content: center; z-index: 1000;
+}
+.login-box {
+  background: #fff; border-radius: 12px; padding: 26px 28px; width: 340px;
+  box-shadow: 0 12px 40px rgba(16, 24, 40, .25);
+}
+.login-box h3 { margin: 0 0 6px; font-size: 17px; }
+.login-hint { color: var(--muted); font-size: 12px; line-height: 1.6; margin-bottom: 14px; }
+.login-box input { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+.login-err { color: var(--up); font-size: 12.5px; margin-bottom: 8px; }
+.login-actions { display: flex; gap: 10px; }
 .loading { text-align: center; color: var(--muted); padding: 40px; }
 a { color: var(--primary); }

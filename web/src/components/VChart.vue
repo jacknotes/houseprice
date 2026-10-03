@@ -35,7 +35,6 @@ export default {
   props: {
     option: { type: Object, required: true },
     height: { type: String, default: '420px' },
-    // tooltip value format: 'idx' (指数) | 'pct' (百分比) | 'price' (元/㎡)
     tipUnit: { type: String, default: 'idx' },
   },
   data: () => ({ chart: null, ro: null }),
@@ -45,60 +44,63 @@ export default {
         if (this.chart) {
           this._plain = unwrap(v);
           delete this._plain.tooltip;
+          delete this._plain.dataZoom;
           this.chart.setOption(this._plain);
           this._recompute();
+          this._applyView();
         }
       },
       deep: true,
     },
   },
+  created() {
+    this._onMove = this._onMove.bind(this);
+    this._onOut = this._onOut.bind(this);
+    this._onWheel = this._onWheel.bind(this);
+    this._onDbl = this._onDbl.bind(this);
+  },
   mounted() {
     this.chart = echarts.init(this.$refs.el);
     this._plain = unwrap(this.option);
+    // The echarts hover/dataZoom pipeline throws intermittently in this app and an
+    // exception in one zrender handler aborts the rest of the dispatch chain. So
+    // hover tooltips AND zooming are implemented here with pure DOM + math against
+    // our own option data; the echarts tooltip/dataZoom components are stripped.
     delete this._plain.tooltip;
-    // The echarts hover pipeline (tooltip/axisPointer/sampling tasks) throws
-    // intermittently in this app and an exception inside one zrender handler
-    // aborts the rest of the dispatch chain. So the hover tooltip is computed
-    // with pure pixel math against our own option data — no echarts APIs at
-    // hover time — and bound on `document` (capture) so it survives Vue
-    // re-rendering the chart container.
+    delete this._plain.dataZoom;
     this.chart.setOption(this._plain, true);
     this._recompute();
     this._buildOverlay();
-    this._bound = (e) => {
-      const target = e.target;
-      const inst = target && target.closest ? target.closest('[_echarts_instance_]') : null;
-      if (!inst || inst !== this._el) return;
-      this._onMove(e);
-    };
     this._el = this.$refs.el;
-    document.addEventListener('mousemove', this._bound, true);
-    document.addEventListener('mouseout', this._onOut, true);
+    this._el.addEventListener('mousemove', this._onMove, true);
+    this._el.addEventListener('mouseleave', this._onLeave, true);
+    this._el.addEventListener('wheel', this._onWheel, true);
+    this._el.addEventListener('dblclick', this._onDbl, true);
     this.ro = new ResizeObserver(() => this.chart && this.chart.resize());
     this.ro.observe(this.$refs.el);
   },
   beforeUnmount() {
-    document.removeEventListener('mousemove', this._bound, true);
-    document.removeEventListener('mouseout', this._onOut, true);
+    this._el.removeEventListener('mousemove', this._onMove, true);
+    this._el.removeEventListener('mouseleave', this._onLeave, true);
+    this._el.removeEventListener('wheel', this._onWheel, true);
+    this._el.removeEventListener('dblclick', this._onDbl, true);
     if (this.ro) this.ro.disconnect();
     if (this.chart) this.chart.dispose();
   },
   methods: {
     _recompute() {
-      // precompute hover math from our own option data (no echarts state needed)
       const g = gridOf(this._plain);
       const series = this._plain.series || [];
       const line = series.find((s) => s.type === 'line' && Array.isArray(s.data) && s.data.length && Array.isArray(s.data[0]));
       const bar = series.find((s) => s.type === 'bar' && Array.isArray(s.data) && s.data.length);
       if (line) {
         const data0 = line.data;
-        const t0 = Date.parse(data0[0][0] + '-01T00:00:00');
-        const t1 = Date.parse(data0[data0.length - 1][0] + '-01T00:00:00');
         this._hover = {
           kind: 'time',
           months: data0.map((d) => d[0]),
-          t0, t1,
-          gridW: 0, // resolved at hover time from container width
+          series: series
+            .filter((s) => s.type === 'line')
+            .map((s) => ({ name: s.name || '', color: (s.itemStyle && s.itemStyle.color) || (s.lineStyle && s.lineStyle.color) || '#2456e6', data: s.data })),
           g,
         };
       } else if (bar) {
@@ -114,10 +116,52 @@ export default {
       } else {
         this._hover = null;
       }
-      this._zoom = { start: 0, end: 100 };
+      this._view = null; // { i0, i1 } visible index range for time charts
+    },
+    _syncZoom() {
+      if (this._view) this._applyView();
+    },
+    _applyView() {
+      // re-render line series with the sliced window + explicit axis bounds
+      const v = this._view;
+      const series = (this._plain.series || []).filter((s) => s.type === 'line' && Array.isArray(s.data));
+      if (!v || !series.length) return;
+      const months = this._hover.months;
+      const sliced = series.map((s) => ({ ...s, data: s.data.slice(v.i0, v.i1 + 1) }));
+      const option = { series: sliced.map((s) => ({ name: s.name, type: s.type, data: s.data })) };
+      option.xAxis = { min: months[v.i0], max: months[v.i1] };
+      this.chart.setOption(option);
+    },
+    _onWheel(e) {
+      if (!this._hover || this._hover.kind !== 'time') return;
+      e.preventDefault();
+      const el = this.$refs.el;
+      const rect = el.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const g = this._hover.g;
+      const gw = Math.max(10, el.clientWidth - g.left - g.right);
+      const n = this._hover.months.length;
+      if (!this._view) this._view = { i0: 0, i1: n - 1 };
+      let { i0, i1 } = this._view;
+      const span = i1 - i0;
+      const frac = Math.min(1, Math.max(0, (px - g.left) / gw));
+      const anchor = i0 + span * frac;
+      const k = e.deltaY > 0 ? 1.3 : 0.75;
+      const newSpan = Math.max(11, Math.min(n - 1, span * k));
+      let ni0 = Math.round(anchor - newSpan * frac);
+      let ni1 = ni0 + Math.round(newSpan);
+      if (ni0 < 0) { ni0 = 0; ni1 = Math.min(n - 1, Math.round(newSpan)); }
+      if (ni1 > n - 1) { ni1 = n - 1; ni0 = Math.max(0, ni1 - Math.round(newSpan)); }
+      this._view = { i0: ni0, i1: ni1 };
+      this._applyView();
+    },
+    _onDbl() {
+      if (!this._hover || this._hover.kind !== 'time') return;
+      const n = this._hover.months.length;
+      this._view = { i0: 0, i1: n - 1 };
+      this._applyView();
     },
     _onOut(e) {
-      // hide when the pointer leaves this chart's container
       const inst = e.target && e.target.closest ? e.target.closest('[_echarts_instance_]') : null;
       const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('[_echarts_instance_]') : null;
       if (inst === this._el && to !== this._el) this._hideAll();
@@ -127,34 +171,30 @@ export default {
       if (this._cross) this._cross.style.display = 'none';
     },
     _onMove(e) {
-      try {
-        this._handleMove(e);
-      } catch (err) { this._hideAll(); }
+      try { this._handleMove(e); } catch (err) { this._hideAll(); }
     },
     _handleMove(e) {
       if (!this._hover || !this._el) return;
-      const rect = this._el.getBoundingClientRect();
+      const el = this.$refs.el;
+      const rect = el.getBoundingClientRect();
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
-      const w = this._el.clientWidth, h = this._el.clientHeight;
+      const w = el.clientWidth, h = el.clientHeight;
       if (px < 0 || py < 0 || px > w || py > h) return this._hideAll();
       const g = this._hover.g;
       const gw = Math.max(10, w - g.left - g.right);
-      const gh = Math.max(10, h - g.top - g.bottom);
       let rows = null, title = '', xPix = null;
       if (this._hover.kind === 'time') {
         const n = this._hover.months.length;
-        const z0 = this._zoom.start / 100, z1 = this._zoom.end / 100;
+        const v = this._view || { i0: 0, i1: n - 1 };
         const frac = Math.min(1, Math.max(0, (px - g.left) / gw));
-        const tFrac = z0 + (z1 - z0) * frac;
-        let idx = Math.round(tFrac * (n - 1));
-        idx = Math.min(n - 1, Math.max(0, idx));
+        let idx = Math.round(v.i0 + (v.i1 - v.i0) * frac);
+        idx = Math.min(v.i1, Math.max(v.i0, idx));
         title = this._hover.months[idx];
-        const series = (this._plain.series || []).filter((s) => s.type === 'line');
-        rows = series.map((s) => ({
-          name: s.name || '',
+        rows = this._hover.series.map((s) => ({
+          name: s.name,
           v: s.data[idx] ? s.data[idx][1] : null,
-          color: (s.itemStyle && s.itemStyle.color) || (s.lineStyle && s.lineStyle.color) || '#2456e6',
+          color: s.color,
         }));
         xPix = g.left + frac * gw;
       } else {
@@ -171,9 +211,7 @@ export default {
         if (best < 0) return this._hideAll();
         title = this._hover.names[best] || '';
         rows = [{ name: '二手环比', v: values[best], color: values[best] >= 0 ? '#e0342f' : '#0a9e63' }];
-        xPix = null;
       }
-      // render
       const tip = this._tipDiv;
       const html = [`<div style="font-weight:700;margin-bottom:2px">${title}</div>`];
       for (const r of rows) {
@@ -213,16 +251,6 @@ export default {
       this._cross = cross;
       this._tipDiv = tip;
     },
-  },
-  created() {
-    this._onMove = this._onMove.bind(this);
-    this._onOut = this._onOut.bind(this);
-  },
-  beforeUnmount() {
-    document.removeEventListener('mousemove', this._bound, true);
-    document.removeEventListener('mouseout', this._onOut, true);
-    if (this.ro) this.ro.disconnect();
-    if (this.chart) this.chart.dispose();
   },
 };
 </script>

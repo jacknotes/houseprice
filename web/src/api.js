@@ -1,18 +1,33 @@
+const TOKEN_KEY = 'hp_token';
+export const getToken = () => localStorage.getItem(TOKEN_KEY);
+export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
+export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+
 export async function api(path) {
-  const r = await fetch(path);
+  const headers = {};
+  const t = getToken();
+  if (t) headers.Authorization = 'Bearer ' + t;
+  const r = await fetch(path, { headers });
   const j = await r.json();
-  if (!j.ok) throw new Error(j.error || '请求失败');
+  if (!j.ok) {
+    const e = new Error(j.error || '请求失败');
+    e.status = r.status;
+    throw e;
+  }
   return j.data;
 }
 
 export async function post(path, body) {
-  const r = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const headers = { 'Content-Type': 'application/json' };
+  const t = getToken();
+  if (t) headers.Authorization = 'Bearer ' + t;
+  const r = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) });
   const j = await r.json();
-  if (!j.ok) throw new Error(j.error || '请求失败');
+  if (!j.ok) {
+    const e = new Error(j.error || '请求失败');
+    e.status = r.status;
+    throw e;
+  }
   return j.data;
 }
 

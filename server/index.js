@@ -3,6 +3,7 @@
 'use strict';
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const express = require('express');
 const { DatabaseSync } = require('node:sqlite');
 const { M } = require('./city-meta');
@@ -14,6 +15,39 @@ const DB_PATH = path.join(ROOT, 'data', 'app.db');
 const db = new DatabaseSync(DB_PATH);
 const app = express();
 app.use(express.json({ limit: '2mb' }));
+
+/* ---------- simple admin auth (data management is behind login) ---------- */
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const tokens = new Map(); // token -> expiry ms
+const TOKEN_TTL = 7 * 24 * 3600 * 1000;
+function validToken(req) {
+  const t = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!t) return false;
+  const exp = tokens.get(t);
+  if (!exp || exp < Date.now()) { tokens.delete(t); return false; }
+  return true;
+}
+function requireAuth(req, res, next) {
+  if (!validToken(req)) return res.status(401).json({ ok: false, error: '未登录或登录已过期' });
+  next();
+}
+app.post('/api/login', (req, res) => {
+  const password = (req.body || {}).password;
+  if (password !== ADMIN_PASSWORD) return res.status(401).json({ ok: false, error: '密码错误' });
+  const token = crypto.randomUUID();
+  tokens.set(token, Date.now() + TOKEN_TTL);
+  ok(res, { token });
+});
+app.get('/api/me', (req, res) => ok(res, { valid: validToken(req) }));
+app.post('/api/logout', (req, res) => {
+  const t = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  tokens.delete(t);
+  ok(res, {});
+});
+// data-management endpoints require login
+app.use('/api/import', requireAuth);
+app.use('/api/refresh', requireAuth);
+app.use('/api/community/fetch-real', requireAuth);
 
 const ok = (res, data) => res.json({ ok: true, data });
 let refreshing = false;
