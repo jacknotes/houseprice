@@ -33,7 +33,7 @@ const PY = {
   塘:'T',新:'X',金:'J',泗:'S',玖:'J',同:'T',方:'F',龙:'L',安:'A',华:'H',丰:'F',望:'W',北:'B',中:'Z',
   芳:'F',京:'J',和:'H',猎:'L',骏:'J',光:'G',祈:'Q',岭:'L',时:'S',科:'K',半:'B',蔚:'W',长:'C',水:'S',
   幸:'X',桂:'G',万:'W',百:'B',前:'Q',南:'N',城:'C',清:'Q',名:'M',隆:'L',文:'W',井:'J',洋:'Y',迎:'Y',
-  凝:'N',瑞:'R',天:'T',东:'D',嘉:'J',裕:'Y',公:'G',色:'J',山:'S',荣:'R',纸:'Z',粤:'Y',时:'S',
+  凝:'N',瑞:'R',天:'T',东:'D',嘉:'J',裕:'Y',公:'G',色:'J',山:'S',荣:'R',纸:'Z',粤:'Y',汇:'H',咸:'X',御:'Y',淦:'G',
 };
 const DISCOVER_MAX_PAGES = 30;   // 每轮最多抓的索引页数（限速下约 2 分钟）
 const FETCH_MAX = 12;            // 每轮最多抓的详情页数
@@ -129,9 +129,11 @@ async function discover() {
 async function fetchPrices() {
   const sim = simulatedByCity();
   const report = readJson(REPORT_FILE, []);
-  const prevOk = new Map(report.filter((r) => r.status === 'ok').map((r) => [`${r.city}:${r.name}`, r]));
+  // 兼容旧格式：早期报告只有武汉且无 city 字段
+  const norm = report.map((r) => ({ ...r, city: r.city || 'wuhan' }));
+  const prevOk = new Map(norm.filter((r) => r.status === 'ok').map((r) => [`${r.city}:${r.name}`, r]));
   const out = [];
-  const known = new Map(report.map((r) => [`${r.city}:${r.name}`, r]));
+  const known = new Map(norm.map((r) => [`${r.city}:${r.name}`, r]));
   let fetched = 0;
   for (const c of CITIES) {
     const idxFile = path.join(RAW, `fang-index-${c.code}.json`);
