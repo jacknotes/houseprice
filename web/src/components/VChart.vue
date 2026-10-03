@@ -45,7 +45,9 @@ export default {
           this._plain = unwrap(v);
           delete this._plain.tooltip;
           delete this._plain.dataZoom;
-          this.chart.setOption(this._plain);
+          // notMerge: a smaller series array (e.g. a deselected city) must remove
+          // its line — default merge mode keeps stale series on the chart.
+          this.chart.setOption(this._plain, true);
           this._recompute();
           this._applyView();
         }
@@ -58,6 +60,7 @@ export default {
     this._onOut = this._onOut.bind(this);
     this._onWheel = this._onWheel.bind(this);
     this._onDbl = this._onDbl.bind(this);
+    this._onLeave = this._onLeave.bind(this);
   },
   mounted() {
     this.chart = echarts.init(this.$refs.el);
@@ -104,15 +107,29 @@ export default {
           g,
         };
       } else if (bar) {
-        const vals = bar.data.map((d) => (typeof d === 'object' ? d.value : d));
-        this._hover = {
-          kind: 'bar',
-          values: vals,
-          names: (this._plain.yAxis && this._plain.yAxis.data) || [],
-          min: Math.min(...vals),
-          max: Math.max(...vals),
-          g,
-        };
+        const bseries = series.filter((s) => s.type === 'bar' && Array.isArray(s.data) && s.data.length);
+        if (Array.isArray(bar.data[0])) {
+          // vertical bars on a time axis: items are [month, value]; series may
+          // filter nulls independently, so map values by month per series
+          this._hover = {
+            kind: 'bartime',
+            months: bseries[0].data.map((d) => d[0]),
+            series: bseries.map((s) => {
+              const map = new Map();
+              s.data.forEach((d) => { if (Array.isArray(d) && d[1] != null) map.set(d[0], d[1]); });
+              return { name: s.name || '', map };
+            }),
+            g,
+          };
+        } else {
+          const vals = bar.data.map((d) => (typeof d === 'object' ? d.value : d));
+          this._hover = {
+            kind: 'barcat',
+            values: vals,
+            names: (this._plain.yAxis && this._plain.yAxis.data) || [],
+            g,
+          };
+        }
       } else {
         this._hover = null;
       }
@@ -166,6 +183,9 @@ export default {
       const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('[_echarts_instance_]') : null;
       if (inst === this._el && to !== this._el) this._hideAll();
     },
+    _onLeave() {
+      this._hideAll();
+    },
     _hideAll() {
       if (this._tipDiv) this._tipDiv.style.display = 'none';
       if (this._cross) this._cross.style.display = 'none';
@@ -197,20 +217,25 @@ export default {
           color: s.color,
         }));
         xPix = g.left + frac * gw;
-      } else {
-        // bar: nearest value to the cursor's x position within [min,max] range
-        const { values, min, max } = this._hover;
-        const span = max - min || 1;
+      } else if (this._hover.kind === 'bartime') {
+        const n = this._hover.months.length;
         const frac = Math.min(1, Math.max(0, (px - g.left) / gw));
-        const vAt = min + span * frac;
-        let best = -1, bestD = Infinity;
-        values.forEach((v, i) => {
-          const dd = Math.abs(v - vAt);
-          if (dd < bestD) { bestD = dd; best = i; }
+        const idx = Math.min(n - 1, Math.max(0, Math.round(frac * (n - 1))));
+        title = this._hover.months[idx];
+        rows = this._hover.series.map((s) => {
+          const v = s.map.has(title) ? s.map.get(title) : null;
+          return { name: s.name, v, color: v != null && v >= 0 ? '#e0342f' : '#0a9e63' };
         });
-        if (best < 0) return this._hideAll();
-        title = this._hover.names[best] || '';
-        rows = [{ name: '二手环比', v: values[best], color: values[best] >= 0 ? '#e0342f' : '#0a9e63' }];
+        xPix = g.left + frac * gw;
+      } else {
+        // horizontal bars on a category axis: pick the row under the cursor
+        const n = this._hover.values.length;
+        const gh = Math.max(10, h - g.top - g.bottom);
+        const frac = Math.min(1, Math.max(0, (py - g.top) / gh));
+        const idx = Math.min(n - 1, Math.max(0, Math.floor(frac * n)));
+        title = this._hover.names[idx] || '';
+        const v = this._hover.values[idx];
+        rows = [{ name: '二手环比', v, color: v != null && v >= 0 ? '#e0342f' : '#0a9e63' }];
       }
       const tip = this._tipDiv;
       const html = [`<div style="font-weight:700;margin-bottom:2px">${title}</div>`];

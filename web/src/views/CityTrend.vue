@@ -244,10 +244,14 @@ export default {
     },
     clearSel() { this.selected = []; },
     async loadSingle() {
-      this.detail = await api('/api/city/' + this.selected[0]).catch(() => null);
+      const seq = (this._reqSeq = (this._reqSeq || 0) + 1);
+      const d = await api('/api/city/' + this.selected[0]).catch(() => null);
+      if (seq === this._reqSeq) this.detail = d;
     },
     async loadMulti() {
-      this.multiData = await api(`/api/series/cities?codes=${this.selected.join(',')}&metric=${this.metric}`).catch(() => null);
+      const seq = (this._reqSeq = (this._reqSeq || 0) + 1);
+      const d = await api(`/api/series/cities?codes=${this.selected.join(',')}&metric=${this.metric}`).catch(() => null);
+      if (seq === this._reqSeq) this.multiData = d;
     },
     last(detail, key) {
       const a = detail.index[key];
