@@ -175,6 +175,7 @@ export default {
     badgeCls(source) {
       if (source === 'user') return { cls: 'user', text: '已导入' };
       if (source === 'anjuke-real') return { cls: 'real', text: '真实详情' };
+      if (source === 'fang-real') return { cls: 'real', text: '真实(房天下)' };
       return { cls: 'sim', text: '示例' };
     },
     async doFetch() {
