@@ -146,10 +146,13 @@ async function fetchPrices() {
       let link = index[t.name];
       let proxy = null;
       if (!link) {
+        // 同项目模糊匹配：排除别墅/写字楼/商铺等不同产品形态，优先最短名（最接近本体）
         const base = t.name;
-        for (const [title, url] of Object.entries(index)) {
-          if (title.includes(base) || base.includes(title)) { link = url; proxy = title; break; }
-        }
+        const cand = Object.entries(index)
+          .filter(([title]) => title.includes(base) || base.includes(title))
+          .filter(([title]) => !/别墅|写字楼|商铺|SOHO|公寓|车位|车库/.test(title))
+          .sort((a, b) => a[0].length - b[0].length);
+        if (cand.length) { link = cand[0][1]; proxy = cand[0][0]; }
       }
       if (!link) {
         // 尚未发现：discover 还没扫完或该站确实没有；仅当 discover 已完成该城才记 no-link
@@ -244,7 +247,8 @@ async function status() {
       const missing = (sim[c.code] || []).filter((t) => {
         if (okKeys.has(`${c.code}:${t.name}`)) return false;
         const base = t.name;
-        return !index[t.name] && !Object.keys(index).some((title) => title.includes(base) || base.includes(title));
+        return !index[t.name] && !Object.keys(index).some((title) =>
+          (title.includes(base) || base.includes(title)) && !/别墅|写字楼|商铺|SOHO|公寓|车位|车库/.test(title));
       });
       if (missing.length > 0) return console.log('pending');
     }
