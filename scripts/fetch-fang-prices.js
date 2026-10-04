@@ -62,7 +62,8 @@ function simulatedByCity() {
   for (const c of CITIES) {
     const row = db.prepare('SELECT id FROM cities WHERE code=?').get(c.code);
     if (!row) continue;
-    out[c.code] = db.prepare("SELECT id, name FROM communities WHERE city_id=? AND source='simulated' ORDER BY id").all(row.id);
+    // 含 fang-real：已抓到的价格留在目标池里靠 ok 缓存跳过，保证报告计数稳定、不重复入库
+    out[c.code] = db.prepare("SELECT id, name FROM communities WHERE city_id=? AND source IN ('simulated','fang-real') ORDER BY id").all(row.id);
   }
   return out;
 }

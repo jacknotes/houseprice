@@ -24,7 +24,7 @@ OK=$(echo $COUNTS | cut -d' ' -f1)
 PREV=$(echo $COUNTS | cut -d' ' -f2)
 echo "[backfill] ok=$OK prev=$PREV"
 
-if [ "$OK" != "$PREV" ]; then
+if [ "$OK" -gt "$PREV" ]; then
   node scripts/fetch-fang-prices.js apply || exit 1
   bash scripts/sync-db-to-remote.sh || exit 1
   python -c "import json; json.dump({'okApplied': $OK}, open('data/raw/fang-backfill-state.json', 'w'))"
