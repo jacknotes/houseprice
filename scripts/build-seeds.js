@@ -1,138 +1,66 @@
-// Build seed datasets:
-//  - data/processed/city_level.json : anjuke listing-price series (real, sparse ok)
-//  - data/processed/communities.json: hot communities with simulated series anchored to official city index shape
+// Export the CURRENT live database (data/app.db) as seed datasets under
+// data/processed/, so a fresh clone + `npm run seed` reproduces this project's
+// full state: every community (real prices/details included) and all city
+// index/level series — not the initial 10-per-city simulated demo set.
+//
+// Read-only against the live DB; safe to run while the server is up.
 // Usage: node scripts/build-seeds.js
+'use strict';
 const fs = require('fs');
 const path = require('path');
+const { DatabaseSync } = require('node:sqlite');
 
-const P = (f) => path.join(__dirname, '..', 'data', 'processed', f);
-fs.mkdirSync(P(''), { recursive: true });
-const nbs = JSON.parse(fs.readFileSync(P('city_index.json'), 'utf8'));
+const ROOT = path.join(__dirname, '..');
+const DB = path.join(ROOT, 'data', 'app.db');
+const OUT = path.join(ROOT, 'data', 'processed');
+fs.mkdirSync(OUT, { recursive: true });
 
-/* ---------- 1. city_level: anjuke real series ---------- */
-const levels = {};
+const db = new DatabaseSync(DB, { readOnly: true });
+const cityName = Object.fromEntries(
+  db.prepare('SELECT id, name FROM cities').all().map((r) => [r.id, r.name]),
+);
 
-// Shenzhen (parsed from anjuke SSR page)
-const sz = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'raw', 'anjuke_shenzhen.json'), 'utf8'));
-levels['深圳'] = sz.map((r) => ({ ym: r.ym, price: r.price }));
-
-// Xianning (transcribed from anjuke page)
-const xnTxt = fs.readFileSync(path.join(__dirname, '..', 'data', 'raw', 'anjuke_xianning_transcribed.csv'), 'utf8');
-const xn = xnTxt.trim().split(/\r?\n/).slice(1).map((l) => l.split(',')).filter((c) => c[1] && c[1] !== '-').map((c) => ({ ym: c[0], price: +c[1] }));
-levels['咸宁'] = xn;
-
-// recompute mom from consecutive real points (listed mom lost arrow signs in transcription)
-for (const city of Object.keys(levels)) {
-  const arr = levels[city];
-  arr.forEach((r, i) => {
-    r.mom = i === 0 ? null : +(((r.price - arr[i - 1].price) / arr[i - 1].price) * 100).toFixed(2);
-  });
+/* ---------- city_index.json: NBS 70-city official index series ---------- */
+const idx = {};
+for (const r of db
+  .prepare('SELECT city_id, month, new_idx, new_mom, new_yoy, sec_idx, sec_mom, sec_yoy FROM city_index ORDER BY city_id, month')
+  .iterate()) {
+  // JSON keys follow the transform-nbs.js contract that server/seed.js reads
+  const s = (idx[cityName[r.city_id]] ??= { months: [], newIdx: [], newMom: [], newYoy: [], secondIdx: [], secondMom: [], secondYoy: [] });
+  s.months.push(r.month);
+  s.newIdx.push(r.new_idx); s.newMom.push(r.new_mom); s.newYoy.push(r.new_yoy);
+  s.secondIdx.push(r.sec_idx); s.secondMom.push(r.sec_mom); s.secondYoy.push(r.sec_yoy);
 }
-fs.writeFileSync(P('city_level.json'), JSON.stringify(levels));
+fs.writeFileSync(path.join(OUT, 'city_index.json'), JSON.stringify(idx));
 
-/* ---------- 2. communities ---------- */
-// anchor: normalize a city's monthly series to 1.0 at its first month
-function anchorFromIndex(city, metric) {
-  const s = nbs[city];
-  const out = { months: [], norm: [] };
-  const base = s[metric].find((v) => v != null);
-  for (let i = 0; i < s.months.length; i++) {
-    if (s[metric][i] == null) continue;
-    out.months.push(s.months[i]);
-    out.norm.push(s[metric][i] / base);
-  }
-  return out;
+/* ---------- city_level.json: anjuke city listing-price series (sparse ok) ---------- */
+const lvl = {};
+for (const r of db
+  .prepare('SELECT city_id, month, price, mom, source FROM city_level ORDER BY city_id, month')
+  .iterate()) {
+  (lvl[cityName[r.city_id]] ??= []).push({ ym: r.month, price: r.price, mom: r.mom, source: r.source || 'anjuke' });
 }
-function anchorFromLevel(city) {
-  const arr = levels[city];
-  const out = { months: arr.map((r) => r.ym), norm: arr.map((r) => r.price / arr[0].price) };
-  return out;
-}
-function monthlyBetween(a, b) {
-  const out = [];
-  let [y, m] = a.split('-').map(Number);
-  const [ey, em] = b.split('-').map(Number);
-  while (y < ey || (y === ey && m <= em)) {
-    out.push(`${y}-${String(m).padStart(2, '0')}`);
-    m++; if (m > 12) { m = 1; y++; }
-  }
-  return out;
-}
-// deterministic pseudo-random wobble so curves aren't dead-straight
-function wobble(name, month, i) {
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  const phase = (h % 628) / 100;
-  const y = +month.slice(0, 4), m = +month.slice(5, 7);
-  const seasonal = 0.006 * Math.sin((m / 12) * Math.PI * 2 + phase);
-  const drift = 0.004 * Math.sin(i * 0.35 + phase * 2);
-  const noise = (((h ^ (i * 2654435761)) >>> 0) % 1000) / 100000 - 0.005;
-  return 1 + seasonal + drift + noise;
-}
+fs.writeFileSync(path.join(OUT, 'city_level.json'), JSON.stringify(lvl));
 
-// [city, district, name, currentPrice(2026-09 ≈)]
-const SEED = [
-  ['北京', '海淀', '华清嘉园', 86000], ['北京', '西城', '丰汇园', 128000], ['北京', '朝阳', '望京西园四区', 52000],
-  ['北京', '朝阳', '北京新天地', 43000], ['北京', '海淀', '中关村东里', 79000], ['北京', '昌平', '龙腾苑六区', 36000],
-  ['北京', '大兴', '金地格林小镇', 41000], ['北京', '丰台', '芳城园一区', 46000], ['北京', '通州', '京贸国际城', 32000],
-  ['北京', '东城', '和平里七区', 73000],
-  ['上海', '浦东', '世茂滨江花园', 92000], ['上海', '浦东', '仁恒河滨城', 88000], ['上海', '普陀', '中远两湾城', 54000],
-  ['上海', '闵行', '上海康城', 37000], ['上海', '浦东', '大华锦绣华城', 58000], ['上海', '徐汇', '田林十四村', 52000],
-  ['上海', '长宁', '古北国际广场', 79000], ['上海', '松江', '三湘四季花城', 33000], ['上海', '嘉定', '保利海上五月花', 39000],
-  ['上海', '黄浦', '耀江花园', 98000],
-  ['深圳', '南山', '半岛城邦', 108000], ['深圳', '南山', '蔚蓝海岸', 93000], ['深圳', '福田', '长城大厦', 102000],
-  ['深圳', '福田', '水榭花都', 118000], ['深圳', '宝安', '幸福海岸', 74000], ['深圳', '龙华', '金地上塘道', 58000],
-  ['深圳', '龙岗', '桂芳园', 34000], ['深圳', '龙岗', '万科城', 41000], ['深圳', '罗湖', '百仕达花园', 54000],
-  ['深圳', '南山', '前海时代', 82000],
-  ['广州', '天河', '猎德花园', 88000], ['广州', '天河', '汇景新城', 68000], ['广州', '天河', '骏景花园', 48000],
-  ['广州', '海珠', '金碧花园', 37000], ['广州', '海珠', '光大花园', 44000], ['广州', '番禺', '祈福新邨', 27000],
-  ['广州', '番禺', '华南碧桂园', 30000], ['广州', '白云', '岭南新世界', 37000], ['广州', '白云', '时代玫瑰园', 34000],
-  ['广州', '黄埔', '科城山庄', 30000],
-  ['咸宁', '温泉', '咸宁碧桂园', 5400], ['咸宁', '咸安', '御龙花园', 3900], ['咸宁', '温泉', '淦河家园', 4600],
-  ['咸宁', '温泉', '金桂明珠', 4400], ['咸宁', '咸安', '水木清华', 3900], ['咸宁', '温泉', '中央公园', 4900],
-  // 上海松江区 / 嘉定区（重点覆盖）
-  ['上海', '松江', '泰晤士小镇', 31000], ['上海', '松江', '开元地中海', 34000], ['上海', '松江', '海德名园', 36000],
-  ['上海', '松江', '莱顿小城', 42000], ['上海', '松江', '九城湖滨', 41000],
-  ['上海', '嘉定', '龙湖郦城', 40000], ['上海', '嘉定', '安亭新镇', 30000], ['上海', '嘉定', '华润中央公园', 47000],
-  ['上海', '嘉定', '金地格林世界', 44000],
-  // 松江·泗泾 / 洞泾片区（动迁大居与新老小区）
-  ['上海', '泗泾', '塘和家园顺康苑', 20000], ['上海', '泗泾', '塘和家园齐康苑', 20000], ['上海', '泗泾', '塘和家园久康苑', 20000],
-  ['上海', '泗泾', '塘和家园君康苑', 20000], ['上海', '泗泾', '塘和家园德悦苑', 20000], ['上海', '泗泾', '塘和家园登云苑', 20000],
-  ['上海', '泗泾', '塘和家园仁育苑', 19000], ['上海', '泗泾', '塘和家园海康苑', 21000], ['上海', '泗泾', '塘和家园桂花锦苑', 23500],
-  ['上海', '洞泾', '塘和家园山茶雅苑', 21800],
-  ['上海', '泗泾', '新凯家园钟秀苑', 20000], ['上海', '泗泾', '新凯家园枫景苑', 21000], ['上海', '泗泾', '新凯家园银杏苑', 23000],
-  ['上海', '泗泾', '新凯家园玉兰苑', 22400], ['上海', '泗泾', '新凯家园香樟苑', 21500], ['上海', '泗泾', '新凯家园尚樱苑', 21000],
-  ['上海', '泗泾', '新凯家园紫竹苑', 21000], ['上海', '泗泾', '新凯家园一期', 24000], ['上海', '泗泾', '新凯家园二期', 20000],
-  ['上海', '泗泾', '金港花园一期', 25000], ['上海', '泗泾', '金港花园二期', 24500],
-  ['上海', '泗泾', '泗泾新苑东区', 19000], ['上海', '泗泾', '泗泾新苑西区', 19000],
-  ['上海', '泗泾', '玖龙湾', 26000], ['上海', '泗泾', '古楼新苑东区', 19000], ['上海', '泗泾', '古楼新苑西区', 19000],
-  ['上海', '泗泾', '紫微名庭', 24000], ['上海', '泗泾', '同润山河小城', 29000],
-  ['上海', '洞泾', '同润菲诗艾伦', 26000], ['上海', '老城', '方舟园', 21000],
+/* ---------- communities.json: every community + full monthly series ---------- */
+const DETAIL = [
+  'built_year', 'buildings', 'households', 'plot_ratio', 'greening_rate',
+  'property_fee', 'listed_price', 'listed_month', 'anjuke_url', 'ownership_type', 'property_years',
 ];
-
-const anchors = {};
-const anchorFor = (city) => {
-  if (!anchors[city]) {
-    anchors[city] = city === '咸宁' ? anchorFromLevel('咸宁') : anchorFromIndex(city, 'secondIdx');
-  }
-  return anchors[city];
-};
-
-const communities = [];
-for (const [city, district, name, current] of SEED) {
-  const a = anchorFor(city);
-  const normLast = a.norm[a.norm.length - 1];
-  const base = current / normLast; // price = base * norm
-  const prices = a.months.map((m, i) => Math.round((base * a.norm[i] * wobble(city + name, m, i)) / 10) * 10);
-  communities.push({
-    city, district, name, source: 'simulated',
-    note: '模拟趋势：曲线形态锚定该城市官方指数/真实均价，绝对价格仅示意，可在“数据管理”导入真实数据替换',
-    months: a.months, prices,
-  });
+const comms = [];
+const priceStmt = db.prepare('SELECT month, price FROM community_price WHERE cid = ? ORDER BY month');
+for (const c of db.prepare('SELECT * FROM communities ORDER BY city_id, id').all()) {
+  const series = priceStmt.all(c.id);
+  const out = {
+    city: cityName[c.city_id], district: c.district, name: c.name,
+    source: c.source || 'simulated', note: c.note,
+  };
+  for (const k of DETAIL) if (c[k] != null) out[k] = c[k];
+  out.months = series.map((r) => r.month);
+  out.prices = series.map((r) => r.price);
+  comms.push(out);
 }
-fs.writeFileSync(P('communities.json'), JSON.stringify(communities));
+fs.writeFileSync(path.join(OUT, 'communities.json'), JSON.stringify(comms));
 
-console.log('levels:', JSON.stringify(Object.fromEntries(Object.entries(levels).map(([k, v]) => [k, `${v.length} pts ${v[0].ym}->${v[v.length - 1].ym} last=${v[v.length - 1].price}`])), null, 1));
-console.log('communities:', communities.length);
-const c0 = communities.find((c) => c.city === '深圳');
-console.log('sample 深圳 半岛城邦:', c0 && JSON.stringify({ first: c0.prices[0], peak: Math.max(...c0.prices), last: c0.prices[c0.prices.length - 1], months: c0.months.length }));
+const priceRows = comms.reduce((a, c) => a + c.months.length, 0);
+console.log(`exported: city_index=${Object.keys(idx).length} cities, city_level={${Object.entries(lvl).map(([k, v]) => `${k}:${v.length}`).join(', ')}}, communities=${comms.length}, priceRows=${priceRows}`);

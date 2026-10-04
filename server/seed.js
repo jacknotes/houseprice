@@ -8,7 +8,8 @@ const { M } = require('./city-meta');
 
 const ROOT = path.join(__dirname, '..');
 const PROC = path.join(ROOT, 'data', 'processed');
-const DB_PATH = path.join(ROOT, 'data', 'app.db');
+// SEED_DB_PATH lets verification runs target a copy without touching the live DB
+const DB_PATH = process.env.SEED_DB_PATH || path.join(ROOT, 'data', 'app.db');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const db = new DatabaseSync(DB_PATH);
@@ -78,7 +79,8 @@ CREATE INDEX idx_comm_name ON communities(name);
 const insCity = db.prepare('INSERT INTO cities (code,name,province,tier,in70,featured) VALUES (?,?,?,?,?,?)');
 const insIdx = db.prepare('INSERT OR REPLACE INTO city_index VALUES (?,?,?,?,?,?,?,?)');
 const insLvl = db.prepare('INSERT OR REPLACE INTO city_level VALUES (?,?,?,?,?)');
-const insComm = db.prepare('INSERT INTO communities (name,city_id,district,source,note) VALUES (?,?,?,?,?)');const insCPrice = db.prepare('INSERT OR REPLACE INTO community_price VALUES (?,?,?)');
+const insComm = db.prepare('INSERT INTO communities (name,city_id,district,source,note,built_year,buildings,households,plot_ratio,greening_rate,property_fee,listed_price,listed_month,anjuke_url,ownership_type,property_years) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+const insCPrice = db.prepare('INSERT OR REPLACE INTO community_price VALUES (?,?,?)');
 
 const cityId = {};
 db.exec('BEGIN');
@@ -106,7 +108,7 @@ for (const [name, arr] of Object.entries(levels)) {
   const id = cityId[name];
   if (!id) continue;
   for (const r of arr) {
-    insLvl.run(id, r.ym, r.price, r.mom ?? null, 'anjuke');
+    insLvl.run(id, r.ym, r.price, r.mom ?? null, r.source ?? 'anjuke');
     lvlRows++;
   }
 }
@@ -116,7 +118,12 @@ let cPriceRows = 0;
 for (const c of comms) {
   const id = cityId[c.city];
   if (!id) continue;
-  const r = insComm.run(c.name, id, c.district, c.source, c.note);
+  const r = insComm.run(
+    c.name, id, c.district ?? null, c.source ?? 'simulated', c.note ?? null,
+    c.built_year ?? null, c.buildings ?? null, c.households ?? null, c.plot_ratio ?? null,
+    c.greening_rate ?? null, c.property_fee ?? null, c.listed_price ?? null, c.listed_month ?? null,
+    c.anjuke_url ?? null, c.ownership_type ?? null, c.property_years ?? null,
+  );
   const cid = Number(r.lastInsertRowid);
   for (let i = 0; i < c.months.length; i++) {
     insCPrice.run(cid, c.months[i], c.prices[i]);

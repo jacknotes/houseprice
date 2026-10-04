@@ -110,6 +110,7 @@ curl -X POST http://localhost:3000/api/import/community \
 
 - **70 城指数**：启动时自动更新（见上）。也可手动更新 `data/raw/70cityprice.csv`（来源 [hugohe3/70cityprice](https://github.com/hugohe3/70cityprice)）后运行 `node scripts/transform-nbs.js && npm run seed`。
 - **安居客均价**：`npm run fetch:anjuke` 或启动时自动刷新。若本机 IP 被反爬拦截，可在浏览器打开对应页面另存 HTML 到 `data/raw/anjuke_<城市>.html`，再跑 `node scripts/parse-anjuke-table.js <城市>` 与 `npm run seed`。
+- **刷新种子（打包/交付前必做）**：`node scripts/build-seeds.js` 会把当前运行库**完整导出**为 `data/processed/` 下的三份种子 JSON（全部小区及价格序列、真实详情字段、城市指数/均价），这样新克隆的项目 `npm run seed` 即可 1:1 复现当前数据（含所有真实小区，而非最初的每城 10 个演示数据）。`node scripts/verify-seed.js` 可校验种子与运行库一致（配合 `SEED_DB_PATH=data/seed-test.db npm run seed` 在副本上验证）。
 
 ## 目录结构
 
