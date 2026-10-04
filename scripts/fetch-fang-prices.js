@@ -155,11 +155,13 @@ async function fetchPrices() {
         if (cand.length) { link = cand[0][1]; proxy = cand[0][0]; }
       }
       if (!link) {
-        // 尚未发现：discover 还没扫完或该站确实没有；仅当 discover 已完成该城才记 no-link
+        // 尚未发现：discover 没扫完则 pending；扫完仍无可接受候选(含被产品形态过滤) => 终态 no-match
         const st = readJson(STATE_FILE, { discover: {} });
         const letters = [...new Set((sim[c.code] || []).map((x) => letterOf(x.name)).filter(Boolean))];
         const done = letters.length > 0 && letters.every((L) => st.discover[c.code] && st.discover[c.code][L] === 'done');
-        out.push(prev && prev.status === 'no-link' && done ? prev : { city: c.code, name: t.name, status: done ? 'no-link' : 'pending', simulatedNow: lastPrice(db0(), t.id) });
+        out.push(prev && (prev.status === 'no-link' || prev.status === 'no-match' || prev.status === 'rejected') && done
+          ? prev
+          : { city: c.code, name: t.name, status: done ? 'no-match' : 'pending', simulatedNow: lastPrice(db0(), t.id) });
         continue;
       }
       if (fetched >= FETCH_MAX) { out.push(prev || { city: c.code, name: t.name, status: 'pending', link }); continue; }
