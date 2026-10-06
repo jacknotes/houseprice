@@ -171,14 +171,21 @@ async function fetchPrices() {
         const pm = body.match(/(\d{1,2})月参考均价\s*(\d{4,6})\s*元\/㎡/);
         const mm = body.match(/环比上月\s*([↑↓])\s*([\d.]+)%/);
         if (!pm) { out.push({ city: c.code, name: t.name, status: 'no-price', url: link }); console.log(`NO-PRICE ${c.name} ${t.name}`); fetched++; continue; }
-        const month = `${new Date().getFullYear()}-${pm[1].padStart(2, '0')}`;
-        const price = Number(pm[2]);
-        const mom = mm ? (mm[1] === '↓' ? -1 : 1) * Number(mm[2]) : null;
-        const simNow = lastPrice(db0(), t.id);
-        const delta = simNow ? Math.round((price / simNow - 1) * 1000) / 10 : null;
-        out.push({ city: c.code, name: t.name, status: 'ok', url: link, proxy, month, price, mom, simulatedNow: simNow, deltaPct: delta });
-        console.log(`OK ${c.name} ${t.name}${proxy ? ` (同项目:${proxy})` : ''}: ${price} 元/㎡ (${month}), 模拟末值 ${simNow} (${delta > 0 ? '+' : ''}${delta}%)`);
+      const month = `${new Date().getFullYear()}-${pm[1].padStart(2, '0')}`;
+      const price = Number(pm[2]);
+      const mom = mm ? (mm[1] === '↓' ? -1 : 1) * Number(mm[2]) : null;
+      const simNow = lastPrice(db0(), t.id);
+      const delta = simNow ? Math.round((price / simNow - 1) * 1000) / 10 : null;
+      // 极值守门: 与当前曲线偏离超 ±50% 视为可疑(同名不同盘/异常数据),转人工复核,不自动入库
+      if (delta != null && Math.abs(delta) > 50) {
+        out.push({ city: c.code, name: t.name, status: 'review', url: link, month, price, mom, simulatedNow: simNow, deltaPct: delta });
+        console.log(`REVIEW ${c.name} ${t.name}: ${price} vs 模拟 ${simNow} (${delta > 0 ? '+' : ''}${delta}%) — 超阈值转人工`);
         fetched++;
+        continue;
+      }
+      out.push({ city: c.code, name: t.name, status: 'ok', url: link, month, price, mom, simulatedNow: simNow, deltaPct: delta });
+      console.log(`OK ${c.name} ${t.name}${proxy ? ` (同项目:${proxy})` : ''}: ${price} 元/㎡ (${month}), 模拟末值 ${simNow} (${delta > 0 ? '+' : ''}${delta}%)`);
+      fetched++;
       } catch (e) {
         out.push(prev || { city: c.code, name: t.name, status: 'error', url: link, error: e.message });
         console.log(`ERR ${c.name} ${t.name}: ${e.message}`);
