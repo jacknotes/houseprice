@@ -103,7 +103,8 @@ function parseCommunityView(html) {
   out.property_fee = label('物业费');
   out.greening_rate = label('绿化率');
   out.plot_ratio = label('容积率');
-  const pm = s.match(/<span class="average"[^>]*>(\d{4,6})<\/span>\s*<span class="unit"[^>]*>元\/㎡<\/span>[\s\S]{0,120}?(\d{1,2})月挂牌均价/);
+  // 新版详情页: <span class="average" data-v-..>13977</span> <span class="unit" data-v-..>元/㎡</span> ... <p class="house-price_title">10月挂牌均价</p>
+  const pm = s.match(/<span class="average"[^>]*>(\d{4,6})<\/span>\s*<span class="unit"[^>]*>元[\s\S]{0,400}?(\d{1,2})月挂牌均价/);
   if (pm) {
     out.listed_price = +pm[1];
     const now = new Date();
