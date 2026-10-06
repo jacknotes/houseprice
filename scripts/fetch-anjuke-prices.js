@@ -66,7 +66,7 @@ async function run() {
       if (!sr.status || sr.err) { console.log('network error —— 本轮结束，等下一轮'); return; }
       const sBody = sr.body.toString('utf8');
       if (AJ_BLOCK(sBody)) { console.log('anjuke-blocked: 搜索页被人机校验拦截 —— 本轮结束，等下一轮'); return; }
-      const link = sBody.match(/https:\/\/[a-z]+\.anjuke\.com\/community\/view\/(\d+)/);
+      const link = sBody.match(/(?:https?:)?\/\/[a-z]+\.anjuke\.com\/community\/view\/(\d+)/);
       if (!link) {
         state.done[key] = 'no-match';
         saveJson(STATE_FILE, state);
@@ -134,10 +134,10 @@ async function run() {
 
 function status() {
   const state = readJson(STATE_FILE, { done: {} });
-  const total = targets().length;
-  console.log(total - Object.keys(state.done).length === 0 ? 'complete' : 'pending');
+  // 按目标逐一判定，而非键数量差——done 里可能含已转 fang-real 的陈旧键
+  const list = targets().filter((t) => !state.done[`${t.city.code}:${t.name}`]);
+  console.log(list.length === 0 ? 'complete' : `pending (${list.length} left)`);
 }
-
 const cmd = process.argv[2] || 'run';
 if (cmd === 'run') run().catch((e) => { console.error(e); process.exit(1); });
 else if (cmd === 'status') status();
