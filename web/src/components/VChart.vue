@@ -1,5 +1,5 @@
 <template>
-  <div ref="el" :style="{ height, width: '100%', position: 'relative' }"></div>
+  <div ref="el" class="vc-root" :style="{ height, width: '100%', position: 'relative', touchAction: 'pan-y' }"></div>
 </template>
 
 <script>
@@ -61,6 +61,9 @@ export default {
     this._onWheel = this._onWheel.bind(this);
     this._onDbl = this._onDbl.bind(this);
     this._onLeave = this._onLeave.bind(this);
+    this._onTouchStart = this._onTouchStart.bind(this);
+    this._onTouchMove = this._onTouchMove.bind(this);
+    this._onTouchEnd = this._onTouchEnd.bind(this);
   },
   mounted() {
     this.chart = echarts.init(this.$refs.el);
@@ -79,6 +82,10 @@ export default {
     this._el.addEventListener('mouseleave', this._onLeave, true);
     this._el.addEventListener('wheel', this._onWheel, true);
     this._el.addEventListener('dblclick', this._onDbl, true);
+    this._el.addEventListener('touchstart', this._onTouchStart, { passive: true });
+    this._el.addEventListener('touchmove', this._onTouchMove, { passive: false });
+    this._el.addEventListener('touchend', this._onTouchEnd, { passive: true });
+    this._el.addEventListener('touchcancel', this._onTouchEnd, { passive: true });
     this.ro = new ResizeObserver(() => this.chart && this.chart.resize());
     this.ro.observe(this.$refs.el);
   },
@@ -87,6 +94,10 @@ export default {
     this._el.removeEventListener('mouseleave', this._onLeave, true);
     this._el.removeEventListener('wheel', this._onWheel, true);
     this._el.removeEventListener('dblclick', this._onDbl, true);
+    this._el.removeEventListener('touchstart', this._onTouchStart, { passive: true });
+    this._el.removeEventListener('touchmove', this._onTouchMove, { passive: false });
+    this._el.removeEventListener('touchend', this._onTouchEnd, { passive: true });
+    this._el.removeEventListener('touchcancel', this._onTouchEnd, { passive: true });
     if (this.ro) this.ro.disconnect();
     if (this.chart) this.chart.dispose();
   },
@@ -177,6 +188,82 @@ export default {
       const n = this._hover.months.length;
       this._view = { i0: 0, i1: n - 1 };
       this._applyView();
+    },
+    // touch gestures (mobile): one finger = pan the visible window, two fingers =
+    // pinch zoom, double tap = reset. Vertical page scroll stays native via
+    // touch-action: pan-y; the browser fires touchcancel when it takes over.
+    _fullView() {
+      return { i0: 0, i1: (this._hover ? this._hover.months.length : 1) - 1 };
+    },
+    _touchStartState(e) {
+      const t0 = e.touches[0], t1 = e.touches[1];
+      if (t1) {
+        const dx = t0.clientX - t1.clientX, dy = t0.clientY - t1.clientY;
+        return {
+          mode: 'pinch', dist: Math.hypot(dx, dy) || 1,
+          midX: (t0.clientX + t1.clientX) / 2,
+          view0: { ...(this._view || this._fullView()) },
+        };
+      }
+      return { mode: 'pan', x: t0.clientX, moved: false, view0: { ...(this._view || this._fullView()) } };
+    },
+    _onTouchStart(e) {
+      if (!this._hover || this._hover.kind !== 'time') return;
+      this._hideAll(); // a fresh gesture clears any tooltip left by the previous one
+      this._touch = this._touchStartState(e);
+    },
+    _onTouchMove(e) {
+      const t = this._touch;
+      if (!t || !this._hover || this._hover.kind !== 'time') return;
+      e.preventDefault();
+      const el = this.$refs.el;
+      const g = this._hover.g;
+      const gw = Math.max(10, el.clientWidth - g.left - g.right);
+      const n = this._hover.months.length;
+      const span0 = t.view0.i1 - t.view0.i0;
+      let i0, i1, tipX;
+      if (t.mode === 'pinch' && e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy) || 1;
+        tipX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const frac = Math.min(1, Math.max(0, (tipX - el.getBoundingClientRect().left - g.left) / gw));
+        const newSpan = Math.max(11, Math.min(n - 1, Math.round(span0 / (dist / t.dist))));
+        const anchor = t.view0.i0 + span0 * frac;
+        i0 = Math.round(anchor - newSpan * frac);
+        i1 = i0 + newSpan;
+      } else if (t.mode === 'pan' && e.touches.length === 1) {
+        const dx = e.touches[0].clientX - t.x;
+        if (Math.abs(dx) > 4) t.moved = true;
+        tipX = e.touches[0].clientX;
+        const shift = Math.round(-dx / gw * span0);
+        i0 = t.view0.i0 + shift;
+        i1 = t.view0.i1 + shift;
+      } else {
+        return;
+      }
+      const span = i1 - i0;
+      if (i0 < 0) { i0 = 0; i1 = Math.min(n - 1, i0 + span); }
+      if (i1 > n - 1) { i1 = n - 1; i0 = Math.max(0, i1 - span); }
+      if (i1 <= i0) return;
+      this._view = { i0, i1 };
+      this._applyView();
+      if (tipX != null) {
+        try { this._handleMove({ clientX: tipX, clientY: e.touches[0].clientY }); } catch (err) { this._hideAll(); }
+      }
+    },
+    _onTouchEnd(e) {
+      const t = this._touch;
+      this._touch = null;
+      // the browser taking over means the page is scrolling: drop the tooltip
+      if (e.type === 'touchcancel') { this._hideAll(); return; }
+      if (!t || t.mode !== 'pan' || t.moved) return;
+      const now = Date.now();
+      if (this._lastTap && now - this._lastTap < 320) {
+        this._lastTap = null;
+        this._onDbl();
+      } else {
+        this._lastTap = now;
+      }
     },
     _onOut(e) {
       const inst = e.target && e.target.closest ? e.target.closest('[_echarts_instance_]') : null;

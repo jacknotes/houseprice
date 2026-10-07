@@ -2,7 +2,8 @@
   <div>
     <div class="card">
       <h3>数据来源与覆盖范围</h3>
-      <table class="src">
+      <div class="tbl-wrap">
+        <table class="src">
         <thead>
           <tr><th>数据集</th><th>来源</th><th>覆盖</th><th>性质</th></tr>
         </thead>
@@ -27,6 +28,7 @@
           </tr>
         </tbody>
       </table>
+      </div>
       <div class="note-box" style="margin-top: 12px">
         说明：贝壳 / 链家等平台的小区历史价格需要登录且不对外提供完整序列，无法稳定抓取，因此小区级数据先以“形态真实、价格示意”的模拟数据呈现，并在页面中明确标注。
         若你有真实数据（如中介导出、自己记录），用下面的导入功能即可替换，导入后立即生效并在前端标记为
@@ -42,6 +44,7 @@
         <button class="btn btn-ghost" :disabled="diaging" @click="doDiag">{{ diaging ? '诊断中…' : '网络诊断' }}</button>
         <span v-if="refreshMsg" :style="{ color: refreshOk ? 'var(--down)' : 'var(--up)' }">{{ refreshMsg }}</span>
       </div>
+      <div class="tbl-wrap">
       <table class="src" v-if="diag">
         <thead>
           <tr><th style="width:220px">数据通道</th><th style="width:90px">状态</th><th>说明</th><th style="width:90px">耗时</th></tr>
@@ -61,6 +64,8 @@
           </tr>
         </tbody>
       </table>
+      </div>
+      <div class="tbl-wrap">
       <table class="src" v-if="meta && meta.last_refresh" style="margin-top: 12px">
         <tbody>
           <tr>
@@ -73,6 +78,7 @@
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
 
     <div class="card">

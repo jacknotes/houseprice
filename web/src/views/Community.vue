@@ -104,6 +104,10 @@
           <a :href="detail.anjuke_url" target="_blank" rel="noopener">在安居客查看该小区 →</a>
         </div>
         <VChart :option="detailOption" height="400px" tip-unit="price" />
+        <div class="sub" style="margin: 8px 0 0" v-if="detail.source !== 'user' && detail.months && detail.months.length">
+          口径说明：历史曲线为推算估值——形态取自所在城市的指数 / 均价走势，末端对齐真实挂牌价。曲线起点
+          {{ detail.months[0] }} 是该官方序列的起始月（与小区建成年份无关），早于小区建成年份的区段仅代表趋势形态，不代表当时实际成交价。
+        </div>
       </div>
       <div class="card" v-else>
         <div class="loading">← 从左侧选择一个小区查看价格趋势</div>

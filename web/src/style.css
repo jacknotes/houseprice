@@ -178,3 +178,36 @@ textarea { width: 100%; min-height: 160px; font-family: Consolas, Monaco, monosp
 .login-actions { display: flex; gap: 10px; }
 .loading { text-align: center; color: var(--muted); padding: 40px; }
 a { color: var(--primary); }
+
+/* ---------- mobile ---------- */
+.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tbl-wrap table.src { min-width: 560px; }
+@media (max-width: 760px) {
+  .header { padding: 0 12px; }
+  .header-inner {
+    flex-wrap: wrap; height: auto; gap: 0 12px; padding: 8px 0 0;
+  }
+  .brand { font-size: 17px; padding: 5px 0; }
+  .brand small { display: none; }
+  .auth-area { margin-left: auto; }
+  .auth-link { font-size: 14px; }
+  .nav {
+    width: calc(100% + 24px); margin: 0 -12px; height: 44px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav a { padding: 0 14px; font-size: 14px; white-space: nowrap; flex: 0 0 auto; }
+  .container { padding: 12px 12px 40px; }
+  .card { padding: 14px; border-radius: 8px; margin-bottom: 14px; }
+  .kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+  .kpi { padding: 12px; }
+  .kpi .value { font-size: 20px; }
+  select, input[type="text"], textarea { font-size: 16px; } /* ≥16px avoids iOS focus auto-zoom */
+  .seg button { padding: 7px 11px; font-size: 13px; }
+  .btn { padding: 8px 14px; }
+  .login-box { max-width: calc(100vw - 32px); padding: 20px; }
+  .footer { padding: 14px 12px; }
+}
+@media (max-width: 640px) {
+  .vc-root { height: 320px !important; }
+}

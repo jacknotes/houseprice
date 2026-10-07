@@ -20,7 +20,7 @@
     </div>
     <div class="footer">
       数据来源：国家统计局70城房价指数（官方真实）· 安居客城市挂牌均价（真实抓取）· 小区数据为标注的模拟示例，支持导入真实数据
-      <br />前端版本 v1.2（悬停图表显示“年月+数值”提示；若图表无提示请按 Ctrl+F5 强制刷新）
+      <br />前端版本 v1.3（已适配手机：导航/布局自适应，图表支持单指拖动、双指缩放、双击复位；若样式异常请 Ctrl+F5 强制刷新）
     </div>
 
     <div v-if="showLogin" class="login-mask" @click.self="showLogin = false">
